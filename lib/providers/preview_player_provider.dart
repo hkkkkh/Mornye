@@ -43,11 +43,27 @@ class PreviewPlayerState {
   final Duration position;
   final Duration duration;
 
+  /// Track shown in the preview bar/sheet. Null when the preview was
+  /// started without metadata (only the URL is required to play).
+  final String? title;
+  final String? artist;
+  final String? coverUrl;
+
+  /// In-app gain for the preview deck, 0 to 1. Initialized from the app's
+  /// current volume when a preview starts fresh, and changed by the preview
+  /// volume slider. This is separate from the main player's volume: the
+  /// main player keeps its own (system) volume untouched.
+  final double volume;
+
   const PreviewPlayerState({
     this.activeUrl,
     this.status = PreviewStatus.idle,
     this.position = Duration.zero,
     this.duration = Duration.zero,
+    this.title,
+    this.artist,
+    this.coverUrl,
+    this.volume = 1.0,
   });
 
   bool get isActive => activeUrl != null && activeUrl!.isNotEmpty;
@@ -61,12 +77,20 @@ class PreviewPlayerState {
     PreviewStatus? status,
     Duration? position,
     Duration? duration,
+    String? title,
+    String? artist,
+    String? coverUrl,
+    double? volume,
   }) {
     return PreviewPlayerState(
       activeUrl: clearActiveUrl ? null : (activeUrl ?? this.activeUrl),
       status: status ?? this.status,
       position: position ?? this.position,
       duration: duration ?? this.duration,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      coverUrl: coverUrl ?? this.coverUrl,
+      volume: volume ?? this.volume,
     );
   }
 }
@@ -77,6 +101,10 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
   PlaybackDeck? _player;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   AppLifecycleListener? _lifecycleListener;
+
+  /// False once the user stops the preview, so a completion event that
+  /// arrives from the engine after `stop()` cannot restart playback.
+  bool _loopAllowed = false;
 
   @override
   PreviewPlayerState build() {
@@ -144,9 +172,30 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
     );
     _subscriptions.add(
       player.onPlayerComplete.listen((_) {
-        state = const PreviewPlayerState();
+        unawaited(_restartLoop());
       }),
     );
+  }
+
+  /// Preview clips are ~30 seconds: restart the same clip when it ends
+  /// instead of stopping, until the user pauses, stops, or switches
+  /// tracks. Guarded so a completion event arriving after a stop, a
+  /// pause, or a track switch cannot restart playback.
+  Future<void> _restartLoop() async {
+    final player = _player;
+    if (player == null ||
+        !_loopAllowed ||
+        !state.isActive ||
+        state.status != PreviewStatus.playing) {
+      return;
+    }
+    try {
+      await player.seek(Duration.zero);
+      await player.resume();
+      state = state.copyWith(position: Duration.zero);
+    } catch (e) {
+      _log.w('Failed to loop preview: $e');
+    }
   }
 
   void _discardActivePlayer() {
@@ -183,7 +232,12 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
     }
   }
 
-  Future<void> toggle(String? url) async {
+  Future<void> toggle(
+    String? url, {
+    String? title,
+    String? artist,
+    String? coverUrl,
+  }) async {
     final trimmed = url?.trim() ?? '';
     if (trimmed.isEmpty) return;
 
@@ -196,10 +250,15 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
       return;
     }
 
-    await play(trimmed);
+    await play(trimmed, title: title, artist: artist, coverUrl: coverUrl);
   }
 
-  Future<void> play(String url) async {
+  Future<void> play(
+    String url, {
+    String? title,
+    String? artist,
+    String? coverUrl,
+  }) async {
     final trimmed = url.trim();
     // The main player holds the device in exclusive mode.
     if (trimmed.isEmpty || playbackExclusiveOutput.value) return;
@@ -208,17 +267,30 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
       await ref.read(musicPlayerRuntimeProvider).handler?.pause();
     } catch (_) {}
 
+    // Switching straight to another track keeps the volume the user set
+    // with the preview slider; a fresh preview starts at full deck gain
+    // (1.0) — the OS mixer (mobile) / the deck's own output-volume
+    // handling (desktop) already applies the app volume once, so reading
+    // it here too would apply it twice and make previews too quiet.
     state = PreviewPlayerState(
       activeUrl: trimmed,
       status: PreviewStatus.loading,
+      title: title,
+      artist: artist,
+      coverUrl: coverUrl,
+      volume: state.isActive ? state.volume : 1.0,
     );
+    _loopAllowed = true;
 
     final String source;
     try {
       source = await _playablePreviewUrl(trimmed);
     } catch (e) {
       _log.w('Preview link could not be resolved: $e');
-      if (state.isActiveUrl(trimmed)) state = const PreviewPlayerState();
+      if (state.isActiveUrl(trimmed)) {
+        _loopAllowed = false;
+        state = const PreviewPlayerState();
+      }
       rethrow;
     }
     // Another preview may have started, or this one stopped, meanwhile.
@@ -234,6 +306,7 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
       } catch (retryError) {
         _log.e('Preview playback failed after retry', retryError);
         _discardActivePlayer();
+        _loopAllowed = false;
         state = const PreviewPlayerState();
         rethrow;
       }
@@ -241,10 +314,28 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
   }
 
   Future<void> _playOnPlayer(PlaybackDeck player, String url) async {
-    // Applies the in-app volume; previews have no normalization gain.
-    await player.setVolume(1);
+    // Same output setup as the other decks (media stream, release mode),
+    // then the preview's own volume — the preview deck is separate from
+    // the main player deck, so the main player's volume never reaches it
+    // unless it is applied here. Previews have no normalization gain.
+    await player.configureOutput();
+    await player.setVolume(state.volume);
     await player.setNetworkSource(url);
     await player.resume();
+  }
+
+  /// Applies [volume] to the live preview deck right away, so the preview
+  /// volume slider takes effect immediately instead of on the next track.
+  Future<void> setVolume(double volume) async {
+    final clamped = volume.clamp(0.0, 1.0);
+    state = state.copyWith(volume: clamped);
+    final player = _player;
+    if (player == null) return;
+    try {
+      await player.setVolume(clamped);
+    } catch (e) {
+      _log.w('Failed to set preview volume: $e');
+    }
   }
 
   Future<void> pause() async {
@@ -270,6 +361,9 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
   }
 
   Future<void> stop() async {
+    // Clear first: a completion event from the engine must not restart
+    // the preview after the user stopped it.
+    _loopAllowed = false;
     final player = _player;
     if (player == null) {
       state = const PreviewPlayerState();
