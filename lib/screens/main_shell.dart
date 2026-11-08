@@ -48,6 +48,7 @@ import 'package:mornye/widgets/animation_utils.dart';
 import 'package:mornye/widgets/nav_destination_icons.dart';
 import 'package:mornye/widgets/settings_group.dart';
 import 'package:mornye/widgets/mini_player.dart';
+import 'package:mornye/widgets/preview_player_bar.dart';
 import 'package:mornye/widgets/tv_shell.dart';
 import 'package:mornye/widgets/lazy_tab_view.dart';
 import 'package:mornye/widgets/link/link_actions.dart';
@@ -1303,114 +1304,129 @@ class _MainShellState extends ConsumerState<MainShell>
               ],
             )
           : pageView,
-      bottomNavigationBar: Builder(
-        builder: (context) {
-          if (context.isMornye) {
-            return ListenableBuilder(
-              listenable: Listenable.merge([
-                ShellNavigationService.chromeBrightness,
-                ShellNavigationService.chromeSurface,
-              ]),
-              builder: (context, child) => Theme(
-                data: ShellNavigationService.chromeBrightness.value == null
-                    ? Theme.of(context)
-                    : MornyeTheme.fromContext(
-                        context,
-                        brightness:
-                            ShellNavigationService.chromeBrightness.value!,
-                        chromeSurface:
-                            ShellNavigationService.chromeSurface.value,
-                      ),
-                child: child!,
-              ),
-              child: SafeArea(
-                top: false,
-                minimum: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                // iPadOS-style chrome: one compact, centered pill rather
-                // than a bar spread across a landscape tablet.
-                child: Center(
-                  heightFactor: 1,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: compactMornyeChrome ? 600 : double.infinity,
-                    ),
-                    child: useNavigationRail
-                        ? const MiniPlayer()
-                        : ValueListenableBuilder<bool>(
-                            valueListenable: _mornyeChrome,
-                            builder: (context, collapsed, _) => MornyeBottomBar(
-                              collapsed:
-                                  canMinimizeChrome &&
-                                  collapsed &&
-                                  MediaQuery.viewInsetsOf(context).bottom == 0,
-                              destinations: destinations,
-                              selectedIndex: selectedDestination,
-                              onSelected: _onNavTap,
-                              onHome: () => _onNavTap(0),
-                              onSearch: ShellNavigationService.requestSearch,
-                              blurEnabled: ref.watch(mornyeBlurEnabledProvider),
-                            ),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // The preview bar sits above the navigation in both themes; it
+          // renders nothing while no preview is active.
+          const PreviewPlayerBar(),
+          Builder(
+            builder: (context) {
+              if (context.isMornye) {
+                return ListenableBuilder(
+                  listenable: Listenable.merge([
+                    ShellNavigationService.chromeBrightness,
+                    ShellNavigationService.chromeSurface,
+                  ]),
+                  builder: (context, child) => Theme(
+                    data: ShellNavigationService.chromeBrightness.value == null
+                        ? Theme.of(context)
+                        : MornyeTheme.fromContext(
+                            context,
+                            brightness:
+                                ShellNavigationService.chromeBrightness.value!,
+                            chromeSurface:
+                                ShellNavigationService.chromeSurface.value,
                           ),
+                    child: child!,
                   ),
-                ),
-              ),
-            );
-          }
-          final blurEnabled = ref.watch(backdropBlurEnabledProvider);
-          // The mini player and the bar read as one surface, so the bar
-          // takes the playing track's artwork scheme too; with nothing
-          // playing both keep the app scheme. Only this scope listens
-          // to the track, so a cover change does not rebuild the shell.
-          return Consumer(
-            builder: (context, ref, child) => PlayerArtworkTheme(
-              artUri: ref.watch(
-                currentMediaItemProvider.select(
-                  (item) => item.value?.artUri?.toString(),
-                ),
-              ),
-              child: child!,
-            ),
-            child: Builder(
-              builder: (context) {
-                final bottomBar = Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const MiniPlayer(),
-                    // The bar's container fill separates it; no divider,
-                    // so the mini player and the bar read as one surface.
-                    if (!useNavigationRail)
-                      ExpressiveNavigationBar(
-                        selectedIndex: _currentIndex.clamp(0, maxIndex),
-                        onDestinationSelected: _onNavTap,
-                        isTablet: isTablet,
-                        backgroundColor: settingsGroupColor(
-                          context,
-                        ).withValues(alpha: 0.72),
-                        destinations: destinations,
+                  child: SafeArea(
+                    top: false,
+                    minimum: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                    // iPadOS-style chrome: one compact, centered pill rather
+                    // than a bar spread across a landscape tablet.
+                    child: Center(
+                      heightFactor: 1,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: compactMornyeChrome ? 600 : double.infinity,
+                        ),
+                        child: useNavigationRail
+                            ? const MiniPlayer()
+                            : ValueListenableBuilder<bool>(
+                                valueListenable: _mornyeChrome,
+                                builder: (context, collapsed, _) =>
+                                    MornyeBottomBar(
+                                      collapsed:
+                                          canMinimizeChrome &&
+                                          collapsed &&
+                                          MediaQuery.viewInsetsOf(
+                                                context,
+                                              ).bottom ==
+                                              0,
+                                      destinations: destinations,
+                                      selectedIndex: selectedDestination,
+                                      onSelected: _onNavTap,
+                                      onHome: () => _onNavTap(0),
+                                      onSearch:
+                                          ShellNavigationService.requestSearch,
+                                      blurEnabled: ref.watch(
+                                        mornyeBlurEnabledProvider,
+                                      ),
+                                    ),
+                              ),
                       ),
-                  ],
-                );
-                // The backdrop blur re-filters everything scrolling
-                // underneath on every frame; low-end devices get an
-                // opaque base instead unless the user forces blur on in
-                // appearance settings.
-                if (!blurEnabled) {
-                  return ColoredBox(
-                    color: settingsGroupColor(context),
-                    child: bottomBar,
-                  );
-                }
-                return ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    blendMode: BlendMode.src,
-                    child: bottomBar,
+                    ),
                   ),
                 );
-              },
-            ),
-          );
-        },
+              }
+              final blurEnabled = ref.watch(backdropBlurEnabledProvider);
+              // The mini player and the bar read as one surface, so the bar
+              // takes the playing track's artwork scheme too; with nothing
+              // playing both keep the app scheme. Only this scope listens
+              // to the track, so a cover change does not rebuild the shell.
+              return Consumer(
+                builder: (context, ref, child) => PlayerArtworkTheme(
+                  artUri: ref.watch(
+                    currentMediaItemProvider.select(
+                      (item) => item.value?.artUri?.toString(),
+                    ),
+                  ),
+                  child: child!,
+                ),
+                child: Builder(
+                  builder: (context) {
+                    final bottomBar = Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const MiniPlayer(),
+                        // The bar's container fill separates it; no divider,
+                        // so the mini player and the bar read as one surface.
+                        if (!useNavigationRail)
+                          ExpressiveNavigationBar(
+                            selectedIndex: _currentIndex.clamp(0, maxIndex),
+                            onDestinationSelected: _onNavTap,
+                            isTablet: isTablet,
+                            backgroundColor: settingsGroupColor(
+                              context,
+                            ).withValues(alpha: 0.72),
+                            destinations: destinations,
+                          ),
+                      ],
+                    );
+                    // The backdrop blur re-filters everything scrolling
+                    // underneath on every frame; low-end devices get an
+                    // opaque base instead unless the user forces blur on in
+                    // appearance settings.
+                    if (!blurEnabled) {
+                      return ColoredBox(
+                        color: settingsGroupColor(context),
+                        child: bottomBar,
+                      );
+                    }
+                    return ClipRect(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        blendMode: BlendMode.src,
+                        child: bottomBar,
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
