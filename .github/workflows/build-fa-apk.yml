@@ -85,9 +85,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v5.3.1-fa3 --yes || true
-          git push --delete origin v5.3.1-fa3 || true
-          gh release create v5.3.1-fa3 \
-            --title "Mornye v5.3.1 Persian (fa) — cover + preview retry" \
-            --notes "Persian (fa) UI translation (2,586 strings) + always-visible preview button with iTunes/Deezer fallback. Preview loops until stopped, with bottom player bar and track details. No in-app volume for previews: preview plays at the phone's volume (starts medium). Covers now retry automatically when the first load fails; preview lookup retries once and never caches a network failure. Lite build, arm64 only, debug-signed. Install after uninstalling the official app (different signature)." \
+          gh release delete v5.3.1-fa4 --yes || true
+          git push --delete origin v5.3.1-fa4 || true
+          gh release create v5.3.1-fa4 \
+            --title "Mornye v5.3.1 Persian (fa) — preview volume follows phone" \
+            --notes "Persian (fa) UI translation (2,586 strings) + always-visible preview button with iTunes/Deezer fallback. Preview loops until stopped, with bottom player bar and track details. No in-app volume for previews: preview plays at the phone's volume (starts medium) and now requests audio focus so the phone's volume keys control it. Covers retry automatically when the first load fails; preview lookup retries once and never caches a network failure. Lite build, arm64 only, debug-signed. Install after uninstalling the official app (different signature)." \
             Mornye-fa-v5.3.1-arm64.apk
