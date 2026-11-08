@@ -91,7 +91,6 @@ class CachedCoverImage extends StatelessWidget {
       alignment: alignment,
       memCacheWidth: autoMemCacheWidth,
       memCacheHeight: autoMemCacheHeight,
-      cacheManager: CoverCacheManager.instance,
       fadeInDuration: fadeInDuration,
       fadeOutDuration: fadeOutDuration,
       useOldImageOnUrlChange: true,
@@ -135,7 +134,6 @@ class _RetryingCoverImage extends StatefulWidget {
     this.alignment = Alignment.center,
     this.memCacheWidth,
     this.memCacheHeight,
-    this.cacheManager,
     this.fadeInDuration = Duration.zero,
     this.fadeOutDuration = Duration.zero,
     this.useOldImageOnUrlChange = false,
@@ -151,7 +149,6 @@ class _RetryingCoverImage extends StatefulWidget {
   final Alignment alignment;
   final int? memCacheWidth;
   final int? memCacheHeight;
-  final BaseCacheManager? cacheManager;
   final Duration fadeInDuration;
   final Duration fadeOutDuration;
   final bool useOldImageOnUrlChange;
@@ -204,7 +201,7 @@ class _RetryingCoverImageState extends State<_RetryingCoverImage> {
       alignment: widget.alignment,
       memCacheWidth: widget.memCacheWidth,
       memCacheHeight: widget.memCacheHeight,
-      cacheManager: widget.cacheManager,
+      cacheManager: CoverCacheManager.instance,
       fadeInDuration: widget.fadeInDuration,
       fadeOutDuration: widget.fadeOutDuration,
       useOldImageOnUrlChange: widget.useOldImageOnUrlChange,
