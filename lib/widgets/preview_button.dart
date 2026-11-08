@@ -86,7 +86,14 @@ class _PreviewButtonState extends ConsumerState<PreviewButton> {
     }
 
     try {
-      await ref.read(previewPlayerProvider.notifier).toggle(url);
+      await ref
+          .read(previewPlayerProvider.notifier)
+          .toggle(
+            url,
+            title: _track.name,
+            artist: _track.artistName,
+            coverUrl: _track.coverUrl,
+          );
     } catch (_) {
       _showUnavailable();
     }
@@ -146,9 +153,8 @@ class _PreviewButtonState extends ConsumerState<PreviewButton> {
     final effectiveUrl = _resolvedUrl ?? _track.previewUrl;
     final watchedStatus = ref.watch(
       previewPlayerProvider.select(
-        (state) => state.isActiveUrl(effectiveUrl)
-            ? state.status
-            : PreviewStatus.idle,
+        (state) =>
+            state.isActiveUrl(effectiveUrl) ? state.status : PreviewStatus.idle,
       ),
     );
     final status = _resolving ? PreviewStatus.loading : watchedStatus;
