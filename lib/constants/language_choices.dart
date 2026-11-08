@@ -10,6 +10,7 @@ const appLanguageChoices = [
   ('de', 'Deutsch', Icons.language),
   ('es', 'Español', Icons.language),
   ('es_ES', 'Español (España)', Icons.language),
+  ('fa', 'فارسی', Icons.language),
   ('fr', 'Français', Icons.language),
   ('hi', 'हिन्दी', Icons.language),
   ('it', 'Italiano', Icons.language),
