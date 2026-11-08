@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mornye/providers/music_player_provider.dart';
+import 'package:mornye/providers/system_volume_provider.dart';
 import 'package:mornye/services/platform_bridge.dart';
 import 'package:mornye/services/playback_deck.dart';
 import 'package:mornye/utils/logger.dart';
@@ -49,12 +50,6 @@ class PreviewPlayerState {
   final String? artist;
   final String? coverUrl;
 
-  /// In-app gain for the preview deck, 0 to 1. Initialized from the app's
-  /// current volume when a preview starts fresh, and changed by the preview
-  /// volume slider. This is separate from the main player's volume: the
-  /// main player keeps its own (system) volume untouched.
-  final double volume;
-
   const PreviewPlayerState({
     this.activeUrl,
     this.status = PreviewStatus.idle,
@@ -63,7 +58,6 @@ class PreviewPlayerState {
     this.title,
     this.artist,
     this.coverUrl,
-    this.volume = 1.0,
   });
 
   bool get isActive => activeUrl != null && activeUrl!.isNotEmpty;
@@ -80,7 +74,6 @@ class PreviewPlayerState {
     String? title,
     String? artist,
     String? coverUrl,
-    double? volume,
   }) {
     return PreviewPlayerState(
       activeUrl: clearActiveUrl ? null : (activeUrl ?? this.activeUrl),
@@ -90,7 +83,6 @@ class PreviewPlayerState {
       title: title ?? this.title,
       artist: artist ?? this.artist,
       coverUrl: coverUrl ?? this.coverUrl,
-      volume: volume ?? this.volume,
     );
   }
 }
@@ -267,18 +259,23 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
       await ref.read(musicPlayerRuntimeProvider).handler?.pause();
     } catch (_) {}
 
-    // Switching straight to another track keeps the volume the user set
-    // with the preview slider; a fresh preview starts at full deck gain
-    // (1.0) — the OS mixer (mobile) / the deck's own output-volume
-    // handling (desktop) already applies the app volume once, so reading
-    // it here too would apply it twice and make previews too quiet.
+    // A fresh preview (nothing playing) starts at medium system volume:
+    // there is no in-app volume for previews anymore — the preview plays
+    // at the phone's volume, and the user adjusts it with the phone's
+    // own volume buttons. Track switches keep the current volume.
+    if (!state.isActive) {
+      try {
+        await ref.read(systemVolumeWriterProvider)(0.5);
+      } catch (e) {
+        _log.w('Could not set system volume to medium: $e');
+      }
+    }
     state = PreviewPlayerState(
       activeUrl: trimmed,
       status: PreviewStatus.loading,
       title: title,
       artist: artist,
       coverUrl: coverUrl,
-      volume: state.isActive ? state.volume : 1.0,
     );
     _loopAllowed = true;
 
@@ -314,28 +311,14 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
   }
 
   Future<void> _playOnPlayer(PlaybackDeck player, String url) async {
-    // Same output setup as the other decks (media stream, release mode),
-    // then the preview's own volume — the preview deck is separate from
-    // the main player deck, so the main player's volume never reaches it
-    // unless it is applied here. Previews have no normalization gain.
+    // Same output setup as the other decks (media stream, release mode).
+    // Full deck gain: there is no in-app volume for previews anymore —
+    // the preview plays at the phone's system volume, adjusted with the
+    // phone's own volume buttons. Previews have no normalization gain.
     await player.configureOutput();
-    await player.setVolume(state.volume);
+    await player.setVolume(1);
     await player.setNetworkSource(url);
     await player.resume();
-  }
-
-  /// Applies [volume] to the live preview deck right away, so the preview
-  /// volume slider takes effect immediately instead of on the next track.
-  Future<void> setVolume(double volume) async {
-    final clamped = volume.clamp(0.0, 1.0);
-    state = state.copyWith(volume: clamped);
-    final player = _player;
-    if (player == null) return;
-    try {
-      await player.setVolume(clamped);
-    } catch (e) {
-      _log.w('Failed to set preview volume: $e');
-    }
   }
 
   Future<void> pause() async {
