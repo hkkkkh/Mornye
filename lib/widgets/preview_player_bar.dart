@@ -33,23 +33,22 @@ class PreviewPlayerBar extends ConsumerWidget {
 
     final scheme = Theme.of(context).colorScheme;
     final notifier = ref.read(previewPlayerProvider.notifier);
-    final progress = _progressOf(state);
     final title = state.title ?? '';
     final artist = state.artist ?? '';
     final coverUrl = state.coverUrl;
 
     return Material(
       color: scheme.surfaceContainer,
-      child: InkWell(
-        onTap: () => showModalBottomSheet<void>(
-          context: context,
-          useSafeArea: true,
-          builder: (_) => const _PreviewDetailsSheet(),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () => showModalBottomSheet<void>(
+              context: context,
+              useSafeArea: true,
+              builder: (_) => const _PreviewDetailsSheet(),
+            ),
+            child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 children: [
@@ -109,13 +108,9 @@ class PreviewPlayerBar extends ConsumerWidget {
                 ],
               ),
             ),
-            LinearProgressIndicator(
-              value: progress,
-              minHeight: 2,
-              backgroundColor: scheme.surfaceContainerHighest,
-            ),
-          ],
-        ),
+          ),
+          const _SeekBar(),
+        ],
       ),
     );
   }
@@ -154,6 +149,59 @@ class _CoverThumbnail extends StatelessWidget {
   }
 }
 
+/// Thin progress bar that seeks when tapped or dragged, so the preview can
+/// be jumped forward (or back) from the bottom bar or the details sheet.
+/// The bar is wrapped in vertical padding so the tap target is taller than
+/// the thin visual line. Seeking reads the tap position, so it works even
+/// while the position stream keeps updating.
+class _SeekBar extends ConsumerWidget {
+  const _SeekBar({this.minHeight = 2});
+
+  final double minHeight;
+
+  void _seekFromTap(
+    WidgetRef ref,
+    PreviewPlayerState state,
+    BuildContext context,
+    Offset globalPosition,
+  ) {
+    final total = state.duration.inMilliseconds;
+    final box = context.findRenderObject() as RenderBox?;
+    if (total <= 0 || box == null || !box.hasSize) return;
+    final width = box.size.width;
+    if (width <= 0) return;
+    final fraction = (box.globalToLocal(globalPosition).dx / width).clamp(
+      0.0,
+      1.0,
+    );
+    ref
+        .read(previewPlayerProvider.notifier)
+        .seek(Duration(milliseconds: (fraction * total).round()));
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(previewPlayerProvider);
+    final progress = _progressOf(state);
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (details) =>
+          _seekFromTap(ref, state, context, details.globalPosition),
+      onHorizontalDragUpdate: (details) =>
+          _seekFromTap(ref, state, context, details.globalPosition),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: LinearProgressIndicator(
+          value: progress,
+          minHeight: minHeight,
+          backgroundColor: scheme.surfaceContainerHighest,
+        ),
+      ),
+    );
+  }
+}
+
 /// Track details for the playing preview.
 ///
 /// There is no in-app volume here on purpose: the preview plays at the
@@ -174,7 +222,6 @@ class _PreviewDetailsSheet extends ConsumerWidget {
 
     final scheme = Theme.of(context).colorScheme;
     final notifier = ref.read(previewPlayerProvider.notifier);
-    final progress = _progressOf(state);
     final title = state.title ?? '';
     final artist = state.artist ?? '';
 
@@ -215,11 +262,7 @@ class _PreviewDetailsSheet extends ConsumerWidget {
               ),
             ],
             const SizedBox(height: 16),
-            LinearProgressIndicator(
-              value: progress,
-              minHeight: 4,
-              backgroundColor: scheme.surfaceContainerHighest,
-            ),
+            const _SeekBar(minHeight: 4),
             const SizedBox(height: 4),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
