@@ -226,7 +226,11 @@ class PlaybackDependencies {
   // playing without the equalizer.
   static PlaybackDeck _createPreviewDeck(String playerId) => isDesktopPlatform
       ? _createDeck(playerId)
-      : AudioplayersPlaybackDeck(playerId: playerId, equalizerAvailable: false);
+      : AudioplayersPlaybackDeck(
+          playerId: playerId,
+          equalizerAvailable: false,
+          requestAudioFocus: true,
+        );
   static Future<AudioSession> _getAudioSession() => AudioSession.instance;
   static Future<bool> _convertAudio(List<String> arguments) async =>
       (await FFmpegExecution.arguments(arguments)).success;
