@@ -6,6 +6,8 @@ import 'package:mornye/providers/music_player_provider.dart';
 import 'package:mornye/providers/system_volume_provider.dart';
 import 'package:mornye/services/platform_bridge.dart';
 import 'package:mornye/services/playback_deck.dart';
+import 'package:mornye/services/system_volume_service.dart';
+import 'package:mornye/utils/desktop_platform.dart';
 import 'package:mornye/utils/logger.dart';
 
 final _log = AppLogger('PreviewPlayer');
@@ -98,6 +100,12 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
   /// arrives from the engine after `stop()` cannot restart playback.
   bool _loopAllowed = false;
 
+  /// Last known phone system volume (0-1). The preview deck's gain mirrors
+  /// it, so the preview is exactly as loud as the phone: a muted phone
+  /// means a silent preview. Kept current by the subscription in [build].
+  double _systemVolume = 1.0;
+  StreamSubscription<double>? _volumeSubscription;
+
   @override
   PreviewPlayerState build() {
     _lifecycleListener = AppLifecycleListener(
@@ -108,8 +116,30 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
       if (state.isActive) await stop();
     }
 
+    // Mirror the phone's volume onto the live preview deck (mobile only:
+    // on desktop the deck already multiplies by the in-app gain). This is
+    // what makes the preview follow the phone's volume buttons and go
+    // silent when the phone is muted, even if the system does not route
+    // the keys to the media stream on its own.
+    _volumeSubscription = SystemVolumeService.instance.changes.listen((value) {
+      _systemVolume = value;
+      if (isDesktopPlatform) return;
+      final player = _player;
+      if (player != null && state.isActive) {
+        unawaited(
+          player
+              .setVolume(value)
+              .catchError(
+                (Object error) =>
+                    _log.w('Failed to sync preview volume: $error'),
+              ),
+        );
+      }
+    });
+
     runtime.exclusiveAudioHook = stopPreview;
     ref.onDispose(() {
+      _volumeSubscription?.cancel();
       if (identical(runtime.exclusiveAudioHook, stopPreview)) {
         runtime.exclusiveAudioHook = null;
       }
@@ -312,11 +342,13 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
 
   Future<void> _playOnPlayer(PlaybackDeck player, String url) async {
     // Same output setup as the other decks (media stream, release mode).
-    // Full deck gain: there is no in-app volume for previews anymore —
-    // the preview plays at the phone's system volume, adjusted with the
-    // phone's own volume buttons. Previews have no normalization gain.
+    // The deck gain mirrors the phone's system volume (kept current by the
+    // subscription in build), so the preview is exactly as loud as the
+    // phone: muted phone means a silent preview. On desktop the deck
+    // already multiplies by the in-app gain, so it stays at full gain
+    // there. Previews have no normalization gain.
     await player.configureOutput();
-    await player.setVolume(1);
+    await player.setVolume(isDesktopPlatform ? 1 : _systemVolume);
     await player.setNetworkSource(url);
     await player.resume();
   }
@@ -340,6 +372,18 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
       state = state.copyWith(status: PreviewStatus.playing);
     } catch (e) {
       _log.w('Failed to resume preview: $e');
+    }
+  }
+
+  /// Jumps the playing preview to [position] (bottom bar / details sheet).
+  Future<void> seek(Duration position) async {
+    final player = _player;
+    if (player == null || !state.isActive) return;
+    try {
+      await player.seek(position);
+      state = state.copyWith(position: position);
+    } catch (e) {
+      _log.w('Failed to seek preview: $e');
     }
   }
 
