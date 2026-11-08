@@ -83,7 +83,7 @@ class CachedCoverImage extends StatelessWidget {
         );
       }
     }
-    final image = CachedNetworkImage(
+    final image = _RetryingCoverImage(
       imageUrl: imageUrl,
       width: width,
       height: height,
@@ -116,6 +116,103 @@ class CachedCoverImage extends StatelessWidget {
         .round()
         .clamp(_defaultMinCacheExtent, _defaultMaxCacheExtent)
         .toInt();
+  }
+}
+
+/// A [CachedNetworkImage] that retries a failed download on its own.
+///
+/// A cover that failed on a slow first attempt (cold connection, transient
+/// network hiccup) used to stay blank until the screen was rebuilt — the
+/// user had to leave the app and come back for the cover to appear. This
+/// retries up to 2 extra times with a short growing delay, then gives up
+/// and shows the error widget as before. A new URL resets the attempts.
+class _RetryingCoverImage extends StatefulWidget {
+  const _RetryingCoverImage({
+    required this.imageUrl,
+    this.width,
+    this.height,
+    this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
+    this.memCacheWidth,
+    this.memCacheHeight,
+    this.cacheManager,
+    this.fadeInDuration = Duration.zero,
+    this.fadeOutDuration = Duration.zero,
+    this.useOldImageOnUrlChange = false,
+    this.filterQuality = FilterQuality.low,
+    this.errorWidget,
+    this.placeholder,
+  });
+
+  final String imageUrl;
+  final double? width;
+  final double? height;
+  final BoxFit fit;
+  final Alignment alignment;
+  final int? memCacheWidth;
+  final int? memCacheHeight;
+  final BaseCacheManager? cacheManager;
+  final Duration fadeInDuration;
+  final Duration fadeOutDuration;
+  final bool useOldImageOnUrlChange;
+  final FilterQuality filterQuality;
+  final Widget Function(BuildContext, String, Object)? errorWidget;
+  final Widget Function(BuildContext, String)? placeholder;
+
+  @override
+  State<_RetryingCoverImage> createState() => _RetryingCoverImageState();
+}
+
+class _RetryingCoverImageState extends State<_RetryingCoverImage> {
+  static const _maxRetries = 2;
+  int _attempt = 0;
+  Timer? _retryTimer;
+
+  @override
+  void didUpdateWidget(covariant _RetryingCoverImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _retryTimer?.cancel();
+      _retryTimer = null;
+      _attempt = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onError(Object error) {
+    if (_attempt >= _maxRetries || !mounted) return;
+    _retryTimer?.cancel();
+    _retryTimer = Timer(Duration(seconds: 1 + _attempt), () {
+      if (!mounted) return;
+      setState(() => _attempt++);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CachedNetworkImage(
+      key: ValueKey(_attempt),
+      imageUrl: widget.imageUrl,
+      width: widget.width,
+      height: widget.height,
+      fit: widget.fit,
+      alignment: widget.alignment,
+      memCacheWidth: widget.memCacheWidth,
+      memCacheHeight: widget.memCacheHeight,
+      cacheManager: widget.cacheManager,
+      fadeInDuration: widget.fadeInDuration,
+      fadeOutDuration: widget.fadeOutDuration,
+      useOldImageOnUrlChange: widget.useOldImageOnUrlChange,
+      filterQuality: widget.filterQuality,
+      errorWidget: widget.errorWidget,
+      placeholder: widget.placeholder,
+      errorListener: _onError,
+    );
   }
 }
 
