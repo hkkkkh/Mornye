@@ -1,0 +1,93 @@
+# Build the Persian (fa) Mornye APK on the fork and publish it as a release
+# asset. Lite build only (no Discord SDK, arm64 only), mirroring the
+# repo's own CI android job but without the Discord step and without tests.
+# Triggered by pushing to the fa-build branch. The release tag is fixed so
+# re-runs replace the previous fa release.
+name: Build Persian APK (fa)
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-fa-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MORNYE_DISCORD_SDK: "0"
+      MORNYE_RUST_ANDROID_ABIS: arm64-v8a
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: "temurin"
+          java-version: "25"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version-file: .fvmrc
+          cache: true
+
+      - name: Prepare Flutter framework patch
+        run: dart scripts/prepare_flutter_sdk.dart
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: "9.8.2"
+
+      - name: Install Android SDK & NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;30.0.16248370" \
+            "platforms;android-37.0" \
+            "build-tools;37.0.0" \
+            "cmake;4.1.2"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+
+      - name: Install Rust prerequisites
+        run: |
+          cd rust_backend
+          rustup show
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Configure Flutter SDK for Gradle
+        run: echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
+
+      - name: Build lite release APK (arm64)
+        run: |
+          bash scripts/build_android.sh --lite --target lib/main.dart
+          ls -la build/app/outputs/flutter-apk/
+
+      - name: Verify APK
+        run: |
+          APK=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose "$APK"
+          sha256sum "$APK"
+          cp "$APK" Mornye-fa-v5.3.1-arm64.apk
+
+      - name: Publish APK as fork release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete v5.3.1-fa1 --yes || true
+          git push --delete origin v5.3.1-fa1 || true
+          gh release create v5.3.1-fa1 \
+            --title "Mornye v5.3.1 Persian (fa)" \
+            --notes "Persian (fa) UI translation (2,586 strings) + always-visible preview button with iTunes/Deezer fallback. Lite build, arm64 only, debug-signed. Install after uninstalling the official app (different signature)." \
+            Mornye-fa-v5.3.1-arm64.apk
