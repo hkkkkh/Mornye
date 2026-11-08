@@ -6,11 +6,16 @@ import 'package:mornye/models/track.dart';
 import 'package:mornye/providers/music_player_provider.dart';
 import 'package:mornye/providers/preview_player_provider.dart';
 import 'package:mornye/providers/settings_provider.dart';
+import 'package:mornye/services/preview_lookup_service.dart';
 import 'package:mornye/utils/desktop_platform.dart';
 import 'package:mornye/widgets/app_icon_button.dart';
 import 'package:mornye/widgets/app_loading_indicator.dart';
 
-class PreviewButton extends ConsumerWidget {
+/// One shared lookup so every row reuses the same cache instead of asking
+/// iTunes/Deezer again for a track another row already resolved.
+final _previewLookup = PreviewLookupService();
+
+class PreviewButton extends ConsumerStatefulWidget {
   final Track track;
   final double size;
 
@@ -24,22 +29,66 @@ class PreviewButton extends ConsumerWidget {
     this.dense = false,
   });
 
-  BoxConstraints get _constraints => dense
+  @override
+  ConsumerState<PreviewButton> createState() => _PreviewButtonState();
+}
+
+class _PreviewButtonState extends ConsumerState<PreviewButton> {
+  /// Whether a public preview is currently being looked up for this track.
+  bool _resolving = false;
+
+  /// Preview URL found by the lookup service for a track whose extension
+  /// supplied none. Kept so the button stays in sync with the preview
+  /// player (play/pause icon) after the lookup, instead of resolving again
+  /// on every tap.
+  String? _resolvedUrl;
+
+  Track get _track => widget.track;
+
+  BoxConstraints get _constraints => widget.dense
       ? const BoxConstraints(minWidth: 32, minHeight: 32)
       : const BoxConstraints(minWidth: 48, minHeight: 48);
 
-  ButtonStyle? get _style => dense
+  ButtonStyle? get _style => widget.dense
       ? IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap)
       : null;
 
-  Future<void> _onPressed(BuildContext context, WidgetRef ref) async {
+  void _showUnavailable() {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(context.l10n.previewUnavailable)));
+  }
+
+  Future<void> _onPressed() async {
+    if (_resolving) return;
+
+    // The extension's own preview when it has one, otherwise the URL this
+    // button already resolved for the track.
+    final direct = _track.previewUrl?.trim() ?? '';
+    String? url = _resolvedUrl ?? (direct.isEmpty ? null : direct);
+    if (url == null) {
+      setState(() => _resolving = true);
+      try {
+        url = await _previewLookup.findPreviewUrl(_track);
+      } catch (_) {
+        url = null;
+      }
+      if (!mounted) return;
+      setState(() {
+        _resolving = false;
+        _resolvedUrl = url;
+      });
+      if (url == null) {
+        _showUnavailable();
+        return;
+      }
+    }
+
     try {
-      await ref.read(previewPlayerProvider.notifier).toggle(track.previewUrl);
+      await ref.read(previewPlayerProvider.notifier).toggle(url);
     } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.previewUnavailable)));
+      _showUnavailable();
     }
   }
 
@@ -49,12 +98,12 @@ class PreviewButton extends ConsumerWidget {
   bool _isCurrentMainTrack(MediaItem? item) {
     if (item == null) return false;
     String norm(String? s) => (s ?? '').toLowerCase().trim();
-    return norm(item.title) == norm(track.name) &&
-        norm(item.artist) == norm(track.artistName);
+    return norm(item.title) == norm(_track.name) &&
+        norm(item.artist) == norm(_track.artistName);
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
     // When the built-in player is currently on this track, mirror and control
@@ -67,7 +116,7 @@ class PreviewButton extends ConsumerWidget {
     if (isCurrentMainTrack) {
       final isPlaying = ref.watch(playbackPlayingProvider);
       return AppIconButton(
-        iconSize: size,
+        iconSize: widget.size,
         padding: EdgeInsets.zero,
         constraints: _constraints,
         style: _style,
@@ -89,22 +138,27 @@ class PreviewButton extends ConsumerWidget {
     final exclusive =
         isDesktopPlatform &&
         ref.watch(settingsProvider.select((s) => s.exclusiveOutput));
-    if (!track.hasPreview || exclusive) return const SizedBox.shrink();
+    if (exclusive) return const SizedBox.shrink();
 
-    final status = ref.watch(
+    // The button is always shown now: tracks without an extension preview
+    // resolve one on tap through the lookup service, instead of the button
+    // disappearing entirely for those sources.
+    final effectiveUrl = _resolvedUrl ?? _track.previewUrl;
+    final watchedStatus = ref.watch(
       previewPlayerProvider.select(
-        (state) => state.isActiveUrl(track.previewUrl)
+        (state) => state.isActiveUrl(effectiveUrl)
             ? state.status
             : PreviewStatus.idle,
       ),
     );
+    final status = _resolving ? PreviewStatus.loading : watchedStatus;
 
     final Widget icon;
     final String tooltip;
     switch (status) {
       case PreviewStatus.loading:
         icon = AppLoadingIndicator(
-          size: size * 0.7,
+          size: widget.size * 0.7,
           strokeWidth: 2,
           color: colorScheme.primary,
         );
@@ -131,13 +185,13 @@ class PreviewButton extends ConsumerWidget {
     }
 
     return AppIconButton(
-      iconSize: size,
+      iconSize: widget.size,
       padding: EdgeInsets.zero,
       constraints: _constraints,
       style: _style,
       icon: icon,
       tooltip: tooltip,
-      onPressed: () => _onPressed(context, ref),
+      onPressed: _onPressed,
     );
   }
 }
