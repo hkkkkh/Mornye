@@ -21,8 +21,8 @@ double _progressOf(PreviewPlayerState state) {
 ///
 /// The main player's mini player never appears for previews (it follows the
 /// main player only), so without this bar a playing preview had no visible
-/// controls at all: no way to pause, stop, see the track, or change the
-/// volume. Tapping the bar opens [_PreviewDetailsSheet].
+/// controls at all: no way to pause, stop, or see the track. Tapping the
+/// bar opens [_PreviewDetailsSheet].
 class PreviewPlayerBar extends ConsumerWidget {
   const PreviewPlayerBar({super.key});
 
@@ -154,11 +154,10 @@ class _CoverThumbnail extends StatelessWidget {
   }
 }
 
-/// Track details for the playing preview, with a volume slider.
+/// Track details for the playing preview.
 ///
-/// The slider drives the preview deck's own gain through
-/// [PreviewPlayerController.setVolume], so it changes the preview volume
-/// right away; it never touches the main player's (system) volume.
+/// There is no in-app volume here on purpose: the preview plays at the
+/// phone's system volume, adjusted with the phone's own volume buttons.
 class _PreviewDetailsSheet extends ConsumerWidget {
   const _PreviewDetailsSheet();
 
@@ -233,19 +232,6 @@ class _PreviewDetailsSheet extends ConsumerWidget {
                   _formatDuration(state.duration),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.volume_down_rounded),
-                Expanded(
-                  child: Slider(
-                    value: state.volume,
-                    onChanged: notifier.setVolume,
-                  ),
-                ),
-                const Icon(Icons.volume_up_rounded),
               ],
             ),
             const SizedBox(height: 8),
