@@ -87,6 +87,21 @@ final AudioContext _musicAudioContext = AudioContext(
   ),
 );
 
+/// The preview deck requests audio focus, so the phone's volume keys
+/// control the music stream while a preview plays. The main player keeps
+/// focus none (it never ducks or pauses for other audio); without focus
+/// the system routes the volume keys to the ringtone stream instead, so
+/// the preview volume does not follow the phone at all — it keeps playing
+/// even when the phone is muted.
+final AudioContext _previewAudioContext = AudioContext(
+  android: const AudioContextAndroid(
+    audioFocus: AndroidAudioFocus.gain,
+    contentType: AndroidContentType.music,
+    usageType: AndroidUsageType.media,
+    stayAwake: true,
+  ),
+);
+
 /// audioplayers' [TimerPositionUpdater], except that a tick [wanted] answers
 /// false for asks the platform nothing. The updates the plugin requests
 /// itself, after a load, seek, pause or stop, always read the position.
@@ -159,6 +174,7 @@ class AudioplayersPlaybackDeck implements PlaybackDeck {
     required String playerId,
     bool? nativeAvailable,
     bool? equalizerAvailable,
+    bool requestAudioFocus = false,
   }) : _ordinary = AudioPlayer(playerId: playerId),
        // The Darwin fork's tap is shared source, so macOS has it as well.
        // isDesktopPlatform keeps host-run tests on the mobile default.
@@ -171,7 +187,8 @@ class AudioplayersPlaybackDeck implements PlaybackDeck {
            Platform.isAndroid ||
            Platform.isIOS ||
            (isDesktopPlatform && Platform.isMacOS),
-       _nativeAvailable = nativeAvailable ?? Platform.isAndroid {
+       _nativeAvailable = nativeAvailable ?? Platform.isAndroid,
+       _requestAudioFocus = requestAudioFocus {
     playbackEqualizer.addListener(_equalizerChanged);
     playbackOutputVolume.addListener(_outputVolumeChanged);
     _subscriptions.addAll([
@@ -210,6 +227,7 @@ class AudioplayersPlaybackDeck implements PlaybackDeck {
   final AudioPlayer _ordinary;
   final bool _equalizerAvailable;
   final bool _platformChainsPlayers;
+  final bool _requestAudioFocus;
   bool get _chainsPlayers => debugChainsPlayers ?? _platformChainsPlayers;
   bool _equalizerDisposed = false;
   static const _effects = MethodChannel('xyz.luan/audioplayers');
@@ -340,7 +358,9 @@ class AudioplayersPlaybackDeck implements PlaybackDeck {
     await _ordinary.setReleaseMode(ReleaseMode.stop);
     // audioplayers has no audio context outside Android and iOS.
     if (Platform.isAndroid || Platform.isIOS) {
-      await _ordinary.setAudioContext(_musicAudioContext);
+      await _ordinary.setAudioContext(
+        _requestAudioFocus ? _previewAudioContext : _musicAudioContext,
+      );
     }
   }
 
