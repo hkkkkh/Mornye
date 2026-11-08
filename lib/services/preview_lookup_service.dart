@@ -41,8 +41,18 @@ class PreviewLookupService {
     try {
       url = await _fromItunes(track) ?? await _fromDeezer(track);
     } catch (e) {
-      _log.w('Preview lookup failed for ${track.name}: $e');
-      url = null;
+      // A network failure is transient: retry once after a short pause
+      // instead of reporting "no preview". A failed lookup is never
+      // cached, so the next tap tries again instead of staying broken
+      // for the rest of the app session.
+      _log.w('Preview lookup failed for ${track.name}, retrying once: $e');
+      try {
+        await Future<void>.delayed(const Duration(seconds: 1));
+        url = await _fromItunes(track) ?? await _fromDeezer(track);
+      } catch (e) {
+        _log.w('Preview lookup retry failed for ${track.name}: $e');
+        return null;
+      }
     }
     _cache[key] = url;
     return url;
@@ -164,9 +174,8 @@ class PreviewLookupService {
     return decoded;
   }
 
-  static String _norm(String? value) =>
-      (value ?? '')
-          .toLowerCase()
-          .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06FF]+'), ' ')
-          .trim();
+  static String _norm(String? value) => (value ?? '')
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06FF]+'), ' ')
+      .trim();
 }
