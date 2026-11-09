@@ -319,9 +319,20 @@ extension _HomeTabSearchResultsUI on _HomeTabState {
     final buckets = _getSearchResultBuckets(tracks);
     final realTracks = buckets.realTracks;
     final realTrackIndexes = buckets.realTrackIndexes;
-    final albumItems = buckets.albumItems;
-    final playlistItems = buckets.playlistItems;
-    final artistItems = buckets.artistItems;
+    // Sorting used to apply only to the Songs section, so picking a sort
+    // order left the Artists/Albums/Playlists sections above it visibly
+    // unchanged. Sort every section with the same option.
+    List<Track> sortSection(List<Track> items) => sortHomeSearchItems<Track>(
+      items: items,
+      option: _searchSortOption,
+      nameOf: (t) => t.name,
+      artistOf: (t) => t.artistName,
+      durationOf: (t) => t.duration,
+      dateOf: (t) => t.releaseDate,
+    );
+    final albumItems = sortSection(buckets.albumItems);
+    final playlistItems = sortSection(buckets.playlistItems);
+    final artistItems = sortSection(buckets.artistItems);
 
     final sortedTrackResults = _sortTrackResults(realTracks, realTrackIndexes);
     final sortedTracks = sortedTrackResults.tracks;
