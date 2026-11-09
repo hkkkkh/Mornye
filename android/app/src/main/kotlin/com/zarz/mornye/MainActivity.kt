@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
@@ -384,6 +385,11 @@ class MainActivity: FlutterFragmentActivity() {
         // delegate looks it up by cached id (see getCachedEngineId above).
         AudioServicePlugin.getFlutterEngine(this)
         super.onCreate(savedInstanceState)
+        // Hardware volume keys adjust the music stream while the app is in
+        // the foreground, so they control playback volume even when no
+        // player currently holds audio focus (e.g. a preview, whose deck
+        // only mirrors the system volume).
+        volumeControlStream = AudioManager.STREAM_MUSIC
         handleVerificationNotificationIntent(intent)
         handleExtensionOAuthIntent(intent)
         PlayerWidgetBridge.handleIntent(intent)
