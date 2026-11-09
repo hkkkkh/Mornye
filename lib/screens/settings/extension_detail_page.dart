@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mornye/l10n/l10n.dart';
 import 'package:mornye/providers/extension_provider.dart';
 import 'package:mornye/providers/repo_provider.dart';
+import 'package:mornye/services/extension_display_text.dart';
 import 'package:mornye/controllers/extension_action_forms.dart';
 import 'package:mornye/controllers/extension_auth_launcher.dart';
 import 'package:mornye/widgets/settings_group.dart';
@@ -233,7 +234,11 @@ class _ExtensionDetailPageState extends ConsumerState<ExtensionDetailPage> {
                         if (extension.description.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           Text(
-                            extension.description,
+                            ExtensionDisplayText.description(
+                              context,
+                              extension.id,
+                              extension.description,
+                            ),
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(color: colorScheme.onSurfaceVariant),
                           ),
