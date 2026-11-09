@@ -710,7 +710,7 @@ class _QuickPicksPageViewState extends State<_QuickPicksPageView> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Text(
-            widget.section.title,
+            ExploreSectionTitles.title(context, widget.section.title),
             style: Theme.of(
               context,
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
