@@ -183,10 +183,13 @@ class _SeekBar extends ConsumerWidget {
     if (total <= 0 || box == null || !box.hasSize) return;
     final width = box.size.width;
     if (width <= 0) return;
-    final fraction = (box.globalToLocal(globalPosition).dx / width).clamp(
-      0.0,
-      1.0,
-    );
+    final raw = (box.globalToLocal(globalPosition).dx / width).clamp(0.0, 1.0);
+    // In RTL (e.g. Persian) the bar fills from the right, so a tap/drag on
+    // the right is the start of the clip: mirror the physical x coordinate.
+    // Without this, dragging forward seeks backward.
+    final fraction = Directionality.of(context) == TextDirection.rtl
+        ? 1.0 - raw
+        : raw;
     ref
         .read(previewPlayerProvider.notifier)
         .seek(Duration(milliseconds: (fraction * total).round()));
