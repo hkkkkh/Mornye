@@ -9,6 +9,7 @@ import 'package:mornye/services/playback_deck.dart';
 import 'package:mornye/services/system_volume_service.dart';
 import 'package:mornye/utils/desktop_platform.dart';
 import 'package:mornye/utils/logger.dart';
+import 'package:volume_controller/volume_controller.dart';
 
 final _log = AppLogger('PreviewPlayer');
 
@@ -106,6 +107,56 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
   double _systemVolume = 1.0;
   StreamSubscription<double>? _volumeSubscription;
 
+  /// Backstop for the volume-change event stream: while a preview plays,
+  /// the phone's music-stream volume is re-read directly every 500 ms, so
+  /// the preview follows the volume keys even if the event stream stays
+  /// silent on this phone (the events are the fast path; the poll is the
+  /// backstop). Only runs while a preview is playing.
+  Timer? _volumePollTimer;
+
+  /// Reads the phone's current music-stream volume (0-1) straight from
+  /// the system, falling back to the last known value on error.
+  Future<double> _readSystemVolume() async {
+    if (isDesktopPlatform) return _systemVolume;
+    try {
+      final value = await VolumeController.instance.getVolume();
+      if (value.isFinite) return value.clamp(0.0, 1.0);
+    } catch (e) {
+      _log.w('Failed to read system volume: $e');
+    }
+    return _systemVolume;
+  }
+
+  /// Applies the phone's current volume to the live preview deck when it
+  /// moved since the last sync.
+  Future<void> _syncVolumeFromSystem() async {
+    if (!state.isActive) return;
+    final current = await _readSystemVolume();
+    if ((current - _systemVolume).abs() < 0.01) return;
+    _systemVolume = current;
+    if (isDesktopPlatform) return;
+    final player = _player;
+    if (player == null) return;
+    try {
+      await player.setVolume(current);
+    } catch (e) {
+      _log.w('Failed to sync preview volume: $e');
+    }
+  }
+
+  void _startVolumePolling() {
+    _volumePollTimer?.cancel();
+    _volumePollTimer = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => unawaited(_syncVolumeFromSystem()),
+    );
+  }
+
+  void _stopVolumePolling() {
+    _volumePollTimer?.cancel();
+    _volumePollTimer = null;
+  }
+
   @override
   PreviewPlayerState build() {
     _lifecycleListener = AppLifecycleListener(
@@ -139,6 +190,7 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
 
     runtime.exclusiveAudioHook = stopPreview;
     ref.onDispose(() {
+      _stopVolumePolling();
       _volumeSubscription?.cancel();
       if (identical(runtime.exclusiveAudioHook, stopPreview)) {
         runtime.exclusiveAudioHook = null;
@@ -221,6 +273,7 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
   }
 
   void _discardActivePlayer() {
+    _stopVolumePolling();
     for (final sub in _subscriptions) {
       sub.cancel();
     }
@@ -346,16 +399,22 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
     // subscription in build), so the preview is exactly as loud as the
     // phone: muted phone means a silent preview. On desktop the deck
     // already multiplies by the in-app gain, so it stays at full gain
-    // there. Previews have no normalization gain.
+    // there. Previews have no normalization gain. The volume is re-read
+    // from the system here (not trusted from the last event) and then
+    // polled while the preview plays, so the volume keys keep working
+    // even if the event stream stays silent.
     await player.configureOutput();
-    await player.setVolume(isDesktopPlatform ? 1 : _systemVolume);
+    _systemVolume = isDesktopPlatform ? 1 : await _readSystemVolume();
+    await player.setVolume(_systemVolume);
     await player.setNetworkSource(url);
     await player.resume();
+    _startVolumePolling();
   }
 
   Future<void> pause() async {
     final player = _player;
     if (player == null) return;
+    _stopVolumePolling();
     try {
       await player.pause();
       state = state.copyWith(status: PreviewStatus.paused);
@@ -370,6 +429,7 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
     try {
       await player.resume();
       state = state.copyWith(status: PreviewStatus.playing);
+      _startVolumePolling();
     } catch (e) {
       _log.w('Failed to resume preview: $e');
     }
@@ -404,6 +464,7 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
     // Clear first: a completion event from the engine must not restart
     // the preview after the user stopped it.
     _loopAllowed = false;
+    _stopVolumePolling();
     final player = _player;
     if (player == null) {
       state = const PreviewPlayerState();
