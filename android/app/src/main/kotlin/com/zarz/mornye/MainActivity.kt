@@ -10,6 +10,7 @@ import android.content.res.Configuration
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
@@ -403,6 +404,35 @@ class MainActivity: FlutterFragmentActivity() {
     override fun onStop() {
         keyboardDismissalPending = !isTelevisionDevice()
         super.onStop()
+    }
+
+    // Force the hardware volume keys to the music stream while the app is
+    // in the foreground. Relying on audio focus alone was not enough on
+    // this phone: the keys changed another stream's percentage while the
+    // song's loudness stayed the same. Intercepting the keys here makes
+    // them always adjust the music stream (and the preview follows it),
+    // except during a phone call, where they keep controlling the call.
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+            keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+        ) {
+            val audioManager =
+                getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            if (audioManager.mode != AudioManager.MODE_IN_CALL) {
+                val direction = if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                    AudioManager.ADJUST_RAISE
+                } else {
+                    AudioManager.ADJUST_LOWER
+                }
+                audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    direction,
+                    AudioManager.FLAG_SHOW_UI,
+                )
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
