@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mornye/l10n/l10n.dart';
 import 'package:mornye/providers/repo_provider.dart';
+import 'package:mornye/services/extension_display_text.dart';
 import 'package:mornye/providers/extension_provider.dart';
 import 'package:mornye/utils/adaptive_layout.dart';
 import 'package:mornye/utils/nav_bar_inset.dart';
@@ -363,7 +364,7 @@ class _ExtensionDetailsScreenState
             const EdgeInsets.symmetric(horizontal: 24, vertical: 8) +
             EdgeInsets.symmetric(horizontal: wideListInset(context)),
         child: Text(
-          ext.description,
+          ExtensionDisplayText.description(context, ext.id, ext.description),
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
             height: 1.5,
             color: colorScheme.onSurface,
