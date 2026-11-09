@@ -82,9 +82,20 @@ class PreviewLookupService {
       );
       if (url != null) return url;
     }
+    final byArtistTitle = await _searchItunes(
+      '${track.artistName} ${track.name}',
+      track,
+    );
+    if (byArtistTitle != null) return byArtistTitle;
+    // Some catalogues index the title without the artist (or with a
+    // different artist spelling): fall back to a title-only search.
+    return _searchItunes(track.name, track);
+  }
+
+  Future<String?> _searchItunes(String term, Track track) async {
     final search = await _getJson(
       Uri.https('itunes.apple.com', '/search', {
-        'term': '${track.artistName} ${track.name}',
+        'term': term,
         'entity': 'song',
         'limit': '5',
       }),
@@ -109,11 +120,17 @@ class PreviewLookupService {
         if (url != null) return url;
       }
     }
+    final byArtistTitle = await _searchDeezer(
+      'artist:"${track.artistName}" track:"${track.name}"',
+      track,
+    );
+    if (byArtistTitle != null) return byArtistTitle;
+    return _searchDeezer('track:"${track.name}"', track);
+  }
+
+  Future<String?> _searchDeezer(String query, Track track) async {
     final search = await _getJson(
-      Uri.https('api.deezer.com', '/search', {
-        'q': 'artist:"${track.artistName}" track:"${track.name}"',
-        'limit': '5',
-      }),
+      Uri.https('api.deezer.com', '/search', {'q': query, 'limit': '5'}),
     );
     return _firstPreview(
       search?['data'] as List<dynamic>?,
