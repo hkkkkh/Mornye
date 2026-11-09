@@ -82,7 +82,13 @@ class PreviewPlayerBar extends ConsumerWidget {
                       strokeWidth: 2,
                       color: scheme.primary,
                     )
-                  else
+                  else ...[
+                    IconButton(
+                      iconSize: 22,
+                      icon: const Icon(Icons.replay_10_rounded),
+                      onPressed: () =>
+                          notifier.seekBy(const Duration(seconds: -10)),
+                    ),
                     IconButton(
                       icon: Icon(
                         state.status == PreviewStatus.playing
@@ -100,6 +106,13 @@ class PreviewPlayerBar extends ConsumerWidget {
                         }
                       },
                     ),
+                    IconButton(
+                      iconSize: 22,
+                      icon: const Icon(Icons.forward_10_rounded),
+                      onPressed: () =>
+                          notifier.seekBy(const Duration(seconds: 10)),
+                    ),
+                  ],
                   IconButton(
                     icon: const Icon(Icons.stop_rounded),
                     tooltip: context.l10n.previewStop,
@@ -281,6 +294,13 @@ class _PreviewDetailsSheet extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                IconButton(
+                  iconSize: 28,
+                  icon: const Icon(Icons.replay_10_rounded),
+                  onPressed: () =>
+                      notifier.seekBy(const Duration(seconds: -10)),
+                ),
+                const SizedBox(width: 16),
                 IconButton.filled(
                   iconSize: 32,
                   icon: Icon(
@@ -298,6 +318,12 @@ class _PreviewDetailsSheet extends ConsumerWidget {
                       notifier.resume();
                     }
                   },
+                ),
+                const SizedBox(width: 16),
+                IconButton(
+                  iconSize: 28,
+                  icon: const Icon(Icons.forward_10_rounded),
+                  onPressed: () => notifier.seekBy(const Duration(seconds: 10)),
                 ),
                 const SizedBox(width: 16),
                 IconButton.outlined(
