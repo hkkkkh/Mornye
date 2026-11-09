@@ -13,6 +13,7 @@ import 'package:mornye/controllers/clickable_metadata.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:mornye/l10n/l10n.dart';
 import 'package:mornye/providers/repo_provider.dart';
+import 'package:mornye/services/extension_display_text.dart';
 import 'package:mornye/widgets/settings_group.dart';
 import 'package:mornye/widgets/animation_utils.dart';
 import 'package:mornye/screens/repo/extension_details_screen.dart';
@@ -1005,7 +1006,11 @@ class _ExtensionItem extends StatelessWidget {
               ),
             )
           : Text(
-              extension.description,
+              ExtensionDisplayText.description(
+                context,
+                extension.id,
+                extension.description,
+              ),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
