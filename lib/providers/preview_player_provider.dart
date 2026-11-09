@@ -387,6 +387,19 @@ class PreviewPlayerController extends Notifier<PreviewPlayerState> {
     }
   }
 
+  /// Jumps the playing preview forward/backward by [offset] (skip buttons),
+  /// clamped to the clip's bounds.
+  Future<void> seekBy(Duration offset) async {
+    final player = _player;
+    if (player == null || !state.isActive) return;
+    final total = state.duration.inMilliseconds;
+    final target = (state.position + offset).inMilliseconds.clamp(
+      0,
+      total > 0 ? total : 0,
+    );
+    await seek(Duration(milliseconds: target));
+  }
+
   Future<void> stop() async {
     // Clear first: a completion event from the engine must not restart
     // the preview after the user stopped it.
