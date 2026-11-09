@@ -888,7 +888,7 @@ extension _HomeTabSearchResultsUI on _HomeTabState {
       for (final filter in filters)
         filterChip(
           filter.id,
-          filter.label ?? filter.id,
+          SearchFilterLabels.label(context, filter),
           icon: filter.icon == null ? null : _getFilterIcon(filter.icon!),
         ),
     ];
@@ -981,7 +981,7 @@ extension _HomeTabSearchResultsUI on _HomeTabState {
                               icon: filter.icon == null
                                   ? null
                                   : mornyeIconFor(_getFilterIcon(filter.icon!)),
-                              label: filter.label ?? filter.id,
+                              label: SearchFilterLabels.label(context, filter),
                               selected: selectedFilter == filter.id,
                               onPressed: () =>
                                   Navigator.pop(menuContext, filter.id),
