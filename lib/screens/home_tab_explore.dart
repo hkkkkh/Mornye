@@ -71,7 +71,7 @@ extension _HomeTabExploreUI on _HomeTabState {
         Padding(
           padding: EdgeInsets.fromLTRB(16 + inset, 20, 16 + inset, 12),
           child: Text(
-            section.title,
+            ExploreSectionTitles.title(context, section.title),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontSize: isTablet ? 20 : null,
               fontWeight: FontWeight.bold,
@@ -649,7 +649,7 @@ extension _HomeTabExploreUI on _HomeTabState {
             : appScheme.onSurface;
         return Semantics(
           button: true,
-          label: section.title,
+          label: ExploreSectionTitles.title(context, section.title),
           excludeSemantics: true,
           child: Material(
             color: fill,
@@ -665,7 +665,7 @@ extension _HomeTabExploreUI on _HomeTabState {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
                         child: Text(
-                          section.title,
+                          ExploreSectionTitles.title(context, section.title),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleMedium
@@ -1007,7 +1007,9 @@ class _ExploreSectionPage extends StatelessWidget {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          AppSliverHeader.page(title: section.title),
+          AppSliverHeader.page(
+            title: ExploreSectionTitles.title(context, section.title),
+          ),
           SliverPadding(
             padding: EdgeInsets.fromLTRB(inset, 8, inset, 24),
             sliver: SliverLayoutInfoBuilder(
